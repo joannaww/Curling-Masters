@@ -92,7 +92,7 @@ ALTER TABLE OutsideIncome
 
 CREATE TABLE PlayerMatchPerformance
 (
-  Effectiveness DECIMAL(2,2) NULL    ,
+  Effectiveness DECIMAL(3,2) NULL    ,
   Position      VARCHAR(128) NOT NULL,
   MatchID       INT          NOT NULL,
   PlayerID      INT          NOT NULL

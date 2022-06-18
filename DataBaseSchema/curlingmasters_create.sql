@@ -28,8 +28,8 @@ CREATE TABLE Info
   JoinDate   DATE                          NOT NULL,
   DepartDate DATE                          NOT NULL,
   BirthDate  DATE                          NOT NULL,
-  Email      VARCHAR(128)                  NOT NULL,
-  Phone      VARCHAR(128)                  NOT NULL,
+  Email      VARCHAR(128)                  NULL    ,
+  Phone      VARCHAR(128)                  NULL    ,
   Gender     ENUM('MALE','FEMALE','OTHER') NOT NULL,
   PRIMARY KEY (InfoID)
 );
@@ -92,7 +92,7 @@ ALTER TABLE OutsideIncome
 
 CREATE TABLE PlayerMatchPerformance
 (
-  Effectiveness DECIMAL(8,2) NULL    ,
+  Effectiveness DECIMAL(2,2) NULL    ,
   Position      VARCHAR(128) NOT NULL,
   MatchID       INT          NOT NULL,
   PlayerID      INT          NOT NULL

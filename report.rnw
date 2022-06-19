@@ -1,0 +1,459 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{polski}
+%\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{graphicx}
+\newgeometry{tmargin=3cm,bmargin=3cm,lmargin=3cm,rmargin=3cm}
+\usepackage{authblk}
+\usepackage[hidelinks]{hyperref}
+
+\title{Analiza danych z bazy "Curling Masters"}
+\date{\today}
+\author{Joanna Matuszak, Joanna Wojciechowicz, Wiktoria Marzec, Tymoteusz Kempa, Krystian Walewski}
+
+<<include=F>>=
+pdf.options(encoding='CP1250')
+library(xtable)
+library(DBI)
+library(RMariaDB)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(forecast)
+library(tidyverse)
+library(scales)
+library(kableExtra)
+@
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Połączenie z bazą}
+
+Aby połączyć się z bazą danych skorzystamy z bibliotek \verb|DBI| oraz \verb|RMariaDB|. Następnie możemy pobrać potrzebne dane.
+
+<<include=FALSE>>=
+USER = 'team9'
+PASSWORD = 'te@mqP@ss'
+@
+
+<<warning=FALSE>>=
+connection <- dbConnect(RMariaDB::MariaDB(),
+                        host='giniewicz.it', 
+                        dbname='team9', 
+                        user=USER, 
+                        password=PASSWORD)
+
+matches <- tbl(connection, "Matches") %>% data.frame()
+teams <- tbl(connection, "Teams") %>% data.frame()
+player_match_performance <- tbl(connection, "PlayerMatchPerformance") %>% data.frame()
+players <- tbl(connection, "Players") %>% data.frame()
+info  <- tbl(connection, "Info") %>% data.frame()
+cash_flow <- tbl(connection, "CashFlow") %>% data.frame()
+outside_income <- tbl(connection, "OutsideIncome") %>% data.frame()
+
+dbDisconnect(connection)
+@
+
+Przed przystąpieniem do analizy musimy przygotować odpowiednio nasze dane.
+<<warning=FALSE>>=
+matches$Date <- as.Date(matches$Date, "%Y-%m-%d")
+matches$Month <- as.Date(cut(matches$Date, breaks = "month"))
+
+matches_played <- matches %>% drop_na(ScoreA)
+
+info$BirthDate <- as.Date(info$BirthDate, "%Y-%m-%d")
+@
+
+W dalszej części sprawozdania prezentowane są jedynie wyniki w postaci tabel i wykresów. Pełny kod generujący raport znajduje się w pliku \verb|report.Rnw|.
+
+\section{Analiza danych}
+\subsection{Liczba spotkań każdego miesiąca}
+
+Na wykresie \ref{fig:plot1a} możemy zobaczyć liczbę spotkań, które odbyły się każdego miesiąca. Widzimy, że~mecze odbywają się z regularną okresowością. Sezon rozpoczyna się w pierwszym tygodniu listopada i~trwa $20$ tygodni, a w każdym tygodniu mamy po jednym meczu w danej kategorii (\verb|FEMALE JUNIOR|, \verb|FEMALE SENIOR|, \verb|MALE JUNIOR|, \verb|MALE SENIOR|). Stąd co tydzień mamy po cztery spotkania -- dwa w~sobotę i dwa w niedzielę. Na wykresie \ref{fig:plot1b} możemy zobaczyć, jak będzie wyglądać liczba meczów w~miesiącu, włączając także spotkania zaplanowane, które się jeszcze nie odbyły.
+
+
+\subsection{Bilans wygranych i przegranych drużyny}
+
+Z racji tego, że każda drużyna do tej pory zagrała taką samą liczbę meczów, możemy łatwo porównać, które z nich prezentują się najlepiej pod kątem łącznej liczby wygranych spotkań. Wyniki możemy zobaczyć na wykresie \ref{fig:plot2} oraz w tabeli \ref{tab:2a}. Możemy też wskazać najlepsze drużyny w każdej kategorii -- tabela \ref{tab:2b}. 
+
+Przy okazji porównywania bilansu wygranych i przegranych możemy też wyłonić zwycięzców każdej kategorii w sezonie 2020/2021 oraz w sezonie 2021/2022 (tabele \ref{tab:2e} i tabela \ref{tab:2f}). Gdy pojawią się remisy, wtedy zwycięzcą zostaje ta drużyna, która ma łącznie najwięcej zdobytych punktów.
+
+\subsection{Lista najlepszych zawodników}
+
+Jako kryterium wyboru najlepszych zawodników przyjęliśmy ich średnią efektywność. Czołówka zawodników została przedstawiona w tabeli \ref{tab:3a}. Możemy też wskazać najlepszego zawodnika w każdej drużynie. Wyniki zostały przedtsawione w tabelach \ref{tab:3b} - \ref{tab:3e}.
+
+\subsection{Liczba kibiców w zależności od momentu sezonu}
+
+Na wykresach \ref{fig:plot4a} oraz \ref{fig:plot4b} możemy zobaczyć, jak zmieniało się zainteresowanie meczami na przestrzeni czasu, opowiednio poczas sezonu 2020/2021 oraz 2021/2022. W obu przypadkach widzimy pewien schemat -- na początku sezonu zainteresowanie jest duże, w jego trakcie liczba kibiców danego dnia spada, a w końcówce sezonu pojawia się trend rosnący -- zainteresowanie meczami wzrasta.
+
+Możemy formalnie sprawdzić istnienie zależności między liczbą widzów a momentem sezonu (a konkretnie oddaleniem momentu sezonu od jego środka) wykonując test na korelację. Otrzymaliśmy p-value $< 0$, zatem odrzucamy hipotezę zerową, mówiącą o nieskorelowaniu zmiennych. Wnioskujemy, że zainteresowanie meczami jest powiązane z czasem od środka sezonu.
+<<echo=FALSE>>=
+spectators <- matches %>% filter(Season == '2020/2021') %>%
+  group_by(Date) %>% summarize(SelledToday = sum(Spectators))
+dates <- matches %>% filter(Season == '2020/2021') %>% group_by(Date) %>% summarize()
+mid_date <- dates[20,]
+
+cor.test(spectators$SelledToday, as.numeric(abs(dates$Date - mid_date$Date)))
+@
+
+
+\subsection{Budżet klubu na przestrzeni czasu}
+
+Ważną kwestią jest także budżet klubu. Wykres \ref{fig:plot5} przedstawia jak zmieniał się on na przestrzeni czasu.
+W momencie założenia klubu (1 września 2020 roku) budżet był dosyć wysoki, wyniósł około milion złotych. Widzimy, że generalnie wydatki klubu przewyższają przychody - trend jest ewidentnie malejący. Możemy też zauważyć, że zmiany w budżecie są mniej więcej cykliczne, stan konta zmienia się jedynie kilka razy w miesiącu.
+
+
+\subsection{Lista najbardziej aktywnych zawodników}
+
+W tabeli \ref{tab:6a} przedstawiona została lista zawodników, którzy zagrali w największej liczbie spotkań. W~tabeli znajdziemy dane dla graczy, którzy nie brali czynnego udziału maksymalnie w jednym meczu. Możemy też sprawdzić, którzy zawodnicy rozegrali najmniejszą liczbę spotkań -- wyniki przedstawione są w tabeli \ref{tab:6b}.
+
+\subsection{Najbardziej hojni sponsorzy}
+
+Znaczącym źródłem dochodów klubu są dotacje od sponsorów. W tabeli \ref{tab:7} możemy zobaczyć zestawienie, z którego możemy odczytać, które współprace są najbardziej korzystne finansowo dla klubu.
+
+
+\subsection{Korelacja między średnią efektywnością a wynikiem meczu}
+
+Chcemy sprawdzić, czy istnieje związek między efektywnością drużyny a wynikiem weczu -- wygrana czy przegrana. Jako efektywność drużyny przyjmujemy przeciętną efektywność zawodnika biorącego udział w meczu. W tym celu przeprowadzimy test korelacji pomiędzy zmiennymi, gdzie hipoteza zerowa oznacza korelację równą $0$.
+
+<<echo=FALSE, warning=FALSE, message=FALSE>>=
+if_wins <- function(df){
+  ifelse(df$TeamID == df$TeamA, ifelse(df$ScoreA > df$ScoreB, 1, 0), ifelse(df$ScoreB > df$ScoreA, 1, 0))
+}
+
+df <- matches %>% inner_join(player_match_performance, by = "MatchID") %>% inner_join(players, by = "PlayerID") %>% drop_na(Effectiveness) %>% group_by(MatchID, TeamID) %>%  summarize(mean(Effectiveness)) %>% rename("MeanEffectiveness" = "mean(Effectiveness)") %>% inner_join(matches, by = "MatchID")
+
+if_TeamID_wins <- df %>% if_wins()
+TeamID_effectiveness <- df$MeanEffectiveness
+
+cor.test(TeamID_effectiveness, if_TeamID_wins)
+
+@
+
+W naszym przypadku p-value $< 0.05$, zatem odrzucamy hipotezę zerową. Wnioskujemy, że efektywność zawodników oraz rezultat meczu są ze sobą powiązane.
+
+\subsection{Drużyna zdobywająca średnio najwięcej punktów}
+
+Chcemy porównać drużyny pod kątem średniej liczby zdobytych punktów. Wyniki możemy zobaczyć w tabeli \ref{tab:9a}. Najlepsze drużyny w każdej kategorii zostały przedstawione w tabeli \ref{tab:9b}.
+
+
+\section{Wykresy i tabele}
+
+<<plot1a, echo=FALSE, warning=FALSE, fig.cap="Liczba spotkań każdego miesiąca", fig.height=4, fig.show='hold'>>=
+matches_played %>%
+  ggplot(aes(x = Month)) + geom_bar() +
+  scale_x_date(date_breaks = "1 month", labels = date_format("%m/%y")) +
+  xlab("Miesiąc") + ylab("Liczba spotkań") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+@
+
+<<plot1b, echo=FALSE, warning=FALSE, fig.cap = "Liczba spotkań każdego miesiąca - spotkania zakończone oraz zaplanowane", fig.height=4, fig.show='hold'>>=
+matches %>%
+  ggplot(aes(x = Month)) + geom_bar() +
+  scale_x_date(date_breaks = "1 month", labels = date_format("%m/%y")) +
+  xlab("Miesiąc") + ylab("Liczba spotkań") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+@
+
+<<include=FALSE>>=
+if_A_wins <- function(df){
+  ifelse(df$ScoreA > df$ScoreB, "yes", "no")
+}
+
+if_B_wins <- function(df){
+  ifelse(df$ScoreB > df$ScoreA, "yes", "no")
+}
+
+# tworzymy tabelkę, która zawiera informacje na temat drużyny A (co to za drużyna, w którym czegu grała, "yes", jeśli wygrała "no" jeśli przegrała)
+wins_A <- teams %>% inner_join(matches_played, by = c("TeamID" = "TeamA")) %>% if_A_wins()
+teams_A <- teams %>% inner_join(matches_played, by = c("TeamID" = "TeamA")) %>% 
+  mutate(Win = wins_A) %>% rename("Oponent" = "TeamB")
+
+# tworzymy tabelkę, która zawiera informacje na temat drużyny B (co to za drużyna, w którym czegu grała, "yes", jeśli wygrała "no" jeśli przegrała)
+wins_B <- teams %>% inner_join(matches_played, by = c("TeamID" = "TeamB")) %>% if_B_wins()
+teams_B <- teams %>% inner_join(matches_played, by = c("TeamID" = "TeamB")) %>% 
+  mutate(Win = wins_B) %>% rename("Oponent" = "TeamA")
+@
+
+<<plot2, echo=FALSE, warning=FALSE, fig.align="center", fig.cap = "Bilans wygranych i przegranych drużyny", fig.height=4>>=
+teams_A %>% rbind(teams_B) %>% 
+  ggplot(aes(x = TeamName, fill = Win)) + geom_bar(position = position_dodge()) +
+  ylim(0, 13) +
+  xlab("Drużyna") + ylab("Liczba zwycięstw/porażek") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+@
+
+<<include=FALSE>>=
+number_of_matches <- teams_A %>% rbind(teams_B) %>% group_by(TeamID) %>% count() %>% rename("Total" = "n")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+teams_A %>% rbind(teams_B) %>% filter(Win == "yes") %>% 
+  group_by(TeamID) %>% count() %>% arrange(desc(n)) %>%
+  rename("NumberOfWins" = "n") %>%
+  inner_join(number_of_matches, by = "TeamID") %>%
+  mutate(NumberOfLoses = Total - NumberOfWins) %>%
+  inner_join(teams, by = "TeamID") %>% 
+  select(TeamID, TeamName, Type, AgeCategory, NumberOfWins, NumberOfLoses) %>%
+  xtable(caption = "Bilans sukcesów i porażek", label = "tab:2a")
+  #kbl(booktabs=T, caption="Bilans sukcesów i porażek") %>% 
+  #kable_styling(latex_options=c("hold_position"))
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+teams_A %>% rbind(teams_B) %>% filter(Win == "yes") %>% 
+  group_by(TeamID) %>% count() %>%
+  rename("NumberOfWins" = "n") %>%
+  inner_join(number_of_matches, by = "TeamID") %>%
+  mutate(NumberOfLoses = Total - NumberOfWins) %>%
+  inner_join(teams, by = "TeamID") %>%
+  group_by(Type, AgeCategory) %>% top_n(1, NumberOfWins) %>% 
+  select(TeamID, TeamName, Type, AgeCategory, NumberOfWins, NumberOfLoses) %>%
+  xtable(caption
+       = "Najlepsze drużyny w każdej kategorii", label = "tab:2b")
+@
+
+<<echo=FALSE>>=
+get_winner <- function(df, season){
+  top_teams <- df %>% group_by(Type, AgeCategory) %>% top_n(1, NumberOfWins)
+  n <- count(top_teams)$n
+  
+  teamA <- top_teams %>% inner_join(matches, by = c("TeamID" = "TeamA")) %>% filter(Season == season) %>% group_by(TeamID) %>% summarize(sum(ScoreA)) %>% rename("TotalPoints" = "sum(ScoreA)")
+    teamB <- top_teams %>% inner_join(matches, by = c("TeamID" = "TeamB")) %>% filter(Season == season) %>% group_by(TeamID) %>% summarize(sum(ScoreB)) %>% rename("TotalPoints" = "sum(ScoreB)")
+    top_teams <- teamA %>% rbind(teamB) %>% group_by(TeamID) %>% summarize(sum(TotalPoints)) %>% rename("TotalPoints" = "sum(TotalPoints)") %>% inner_join(top_teams, by = "TeamID")
+  
+  if (n == 1){
+    top_teams
+  } else {
+    top_teams %>% group_by(Type, AgeCategory) %>% top_n(1, TotalPoints)
+  }
+}
+@
+
+<<echo=FALSE>>=
+df_20_21 <- teams_A %>% rbind(teams_B) %>% filter(Win == "yes") %>% 
+  filter(Season == "2020/2021") %>%
+  group_by(TeamID) %>% count() %>% arrange(desc(n)) %>%
+  rename("NumberOfWins" = "n") %>%
+  mutate(NumberOfLoses = as.integer(8 - NumberOfWins)) %>%
+  inner_join(teams, by = "TeamID") %>% 
+  select(TeamID, TeamName, Type, AgeCategory, NumberOfWins, NumberOfLoses)
+
+df_FJ_20_21 <- df_20_21  %>% filter(Type == "FEMALE", AgeCategory == "JUNIORS")
+df_FS_20_21 <- df_20_21  %>% filter(Type == "FEMALE", AgeCategory == "SENIORS")
+df_MJ_20_21 <- df_20_21  %>% filter(Type == "MALE", AgeCategory == "JUNIORS")
+df_MS_20_21 <- df_20_21  %>% filter(Type == "MALE", AgeCategory == "SENIORS")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+get_winner(df_FJ_20_21, "2020/2021") %>% rbind(get_winner(df_FS_20_21, "2020/2021")) %>% 
+  rbind(get_winner(df_MJ_20_21, "2020/2021")) %>% rbind(get_winner(df_MS_20_21, "2020/2021")) %>%
+  xtable(caption = "Zwycięzcy Ligi - sezon 2020/2021", label = "tab:2e")
+@
+
+<<echo=FALSE>>=
+df_21_22 <- teams_A %>% rbind(teams_B) %>% filter(Win == "yes") %>% 
+  filter(Season == "2021/2022") %>%
+  group_by(TeamID) %>% count() %>% arrange(desc(n)) %>%
+  rename("NumberOfWins" = "n") %>%
+  mutate(NumberOfLoses = as.integer(8 - NumberOfWins)) %>%
+  inner_join(teams, by = "TeamID") %>% 
+  select(TeamID, TeamName, Type, AgeCategory, NumberOfWins, NumberOfLoses)
+
+df_FJ_21_22 <- df_21_22  %>% filter(Type == "FEMALE", AgeCategory == "JUNIORS")
+df_FS_21_22 <- df_21_22  %>% filter(Type == "FEMALE", AgeCategory == "SENIORS")
+df_MJ_21_22 <- df_21_22  %>% filter(Type == "MALE", AgeCategory == "JUNIORS")
+df_MS_21_22 <- df_21_22  %>% filter(Type == "MALE", AgeCategory == "SENIORS")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+get_winner(df_FJ_21_22, "2021/2022") %>% rbind(get_winner(df_FS_21_22, "2021/2022")) %>% 
+  rbind(get_winner(df_MJ_21_22, "2021/2022")) %>% rbind(get_winner(df_MS_21_22, "2021/2022")) %>%
+  xtable(caption = "Zwycięzcy Ligi - sezon 2021/2022", label = "tab:2f")
+@
+
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% group_by(PlayerID) %>% 
+  summarize(mean(Effectiveness, na.rm = TRUE)) %>%
+  rename("MeanEffectiveness" = "mean(Effectiveness, na.rm = TRUE)") %>%
+  arrange(desc(MeanEffectiveness)) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  top_n(10, MeanEffectiveness) %>% 
+  select(PlayerID, MeanEffectiveness, FirstName, LastName, TeamName) %>%
+  xtable(caption
+       = "Lista 10 najlepszych zawodników", label = "tab:3a")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% group_by(PlayerID) %>% 
+  summarize(mean(Effectiveness, na.rm = TRUE)) %>%
+  rename("MeanEffectiveness" = "mean(Effectiveness, na.rm = TRUE)") %>%
+  arrange(desc(MeanEffectiveness)) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  filter(Type == "FEMALE", AgeCategory == "JUNIORS") %>%
+  group_by(TeamID) %>%
+  top_n(1, MeanEffectiveness) %>% 
+  select(PlayerID, MeanEffectiveness, FirstName, LastName, TeamName) %>%
+  xtable(caption
+       = "Lista najlepszych zawodniczek w danej drużynie z kategorii FEMALE JUNIORS", label = "tab:3b")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% group_by(PlayerID) %>% 
+  summarize(mean(Effectiveness, na.rm = TRUE)) %>%
+  rename("MeanEffectiveness" = "mean(Effectiveness, na.rm = TRUE)") %>%
+  arrange(desc(MeanEffectiveness)) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  filter(Type == "FEMALE", AgeCategory == "SENIORS") %>%
+  group_by(TeamID) %>%
+  top_n(1, MeanEffectiveness) %>% 
+  select(PlayerID, MeanEffectiveness, FirstName, LastName, TeamName) %>%
+  xtable(caption
+       = "Lista najlepszych zawodniczek w danej drużynie z kategorii FEMALE SENIORS", label = "tab:3c")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% group_by(PlayerID) %>% 
+  summarize(mean(Effectiveness, na.rm = TRUE)) %>%
+  rename("MeanEffectiveness" = "mean(Effectiveness, na.rm = TRUE)") %>%
+  arrange(desc(MeanEffectiveness)) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  filter(Type == "MALE", AgeCategory == "JUNIORS") %>%
+  group_by(TeamID) %>%
+  top_n(1, MeanEffectiveness) %>% 
+  select(PlayerID, MeanEffectiveness, FirstName, LastName, TeamName) %>%
+  xtable(caption
+       = "Lista najlepszych zawodników w danej drużynie z kategorii MALE JUNIORS", label = "tab:3d")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% group_by(PlayerID) %>% 
+  summarize(mean(Effectiveness, na.rm = TRUE)) %>%
+  rename("MeanEffectiveness" = "mean(Effectiveness, na.rm = TRUE)") %>%
+  arrange(desc(MeanEffectiveness)) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  filter(Type == "MALE", AgeCategory == "SENIORS") %>%
+  group_by(TeamID) %>%
+  top_n(1, MeanEffectiveness) %>% 
+  select(PlayerID, MeanEffectiveness, FirstName, LastName, TeamName) %>%
+  xtable(caption
+       = "Lista najlepszych zawodników w danej drużynie z kategorii MALE SENIORS", label = "tab:3e")
+@
+
+<<plot4a, echo=FALSE, warning=FALSE, fig.align="center", fig.cap = "Liczba kibiców w sezonie 2020/2021", fig.height=4>>=
+matches %>% filter(Season == '2020/2021') %>%
+  group_by(Date) %>% summarize(SelledToday = sum(Spectators)) %>%
+  ggplot(aes(x = Date, y = SelledToday)) + geom_line() +
+  scale_x_date(date_breaks = "7 days") +
+  xlab("Czas") + ylab("Liczba kibiców") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+@
+
+<<plot4b, echo=FALSE, warning=FALSE, fig.align="center", fig.cap = "Liczba kibiców w sezonie 2021/2022", fig.height=4>>=
+matches %>% filter(Season == '2021/2022') %>%
+  group_by(Date) %>% summarize(SelledToday = sum(Spectators)) %>%
+  ggplot(aes(x = Date, y = SelledToday)) + geom_line() +
+  scale_x_date(date_breaks = "7 days") +
+  xlab("Czas") + ylab("Liczba kibiców") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+@
+
+
+<<plot5, echo=FALSE, warning=FALSE, fig.align="center", fig.cap = "Budżet klubu", fig.height=4>>=
+cash_flow %>% group_by(Date) %>%
+  summarize(sum(Amount)) %>%
+  ggplot(aes(x = Date, y = cumsum(`sum(Amount)`))) + geom_line() + ylim(0, 1000000) +
+  scale_x_date(date_breaks = "1 month", labels = date_format("%m/%y")) +
+  xlab("Czas") + ylab("Budżet klubu") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+@
+
+<<echo=FALSE>>=
+df <- player_match_performance %>% drop_na(Effectiveness) %>%
+  group_by(PlayerID) %>%
+  count() %>%
+  rename("MatchesPlayed" = "n")
+max_MatchesPlayed <- max(df$MatchesPlayed)
+min_MatchesPlayed <- min(df$MatchesPlayed)
+@
+
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% drop_na(Effectiveness) %>%
+  group_by(PlayerID) %>%
+  count() %>%
+  rename("MatchesPlayed" = "n") %>%
+  arrange(desc(MatchesPlayed)) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  filter(MatchesPlayed >= (max_MatchesPlayed-1)) %>%
+  select(PlayerID, FirstName, LastName, TeamName, MatchesPlayed) %>%
+
+  xtable(caption
+       = "Zawodnicy z największą liczbą zagranych meczów", label = "tab:6a")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+player_match_performance %>% drop_na(Effectiveness) %>%
+  group_by(PlayerID) %>%
+  count() %>%
+  rename("MatchesPlayed" = "n") %>%
+  arrange(MatchesPlayed) %>%
+  inner_join(players, by = "PlayerID") %>%
+  inner_join(info, by = "InfoID") %>%
+  inner_join(teams, by = "TeamID") %>%
+  filter(MatchesPlayed <= (min_MatchesPlayed+1)) %>%
+  select(PlayerID, FirstName, LastName, TeamName, MatchesPlayed) %>%
+  xtable(caption
+       = "Zawodnicy z namniejszą liczbą zagranych meczów", label = "tab:6b")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+cash_flow %>% drop_na(SponsorID) %>% group_by(SponsorID) %>% summarize(sum(Amount)) %>% rename("TotalAmount" = "sum(Amount)") %>% arrange(desc(TotalAmount)) %>% inner_join(outside_income, by = "SponsorID") %>% select(SponsorID, TotalAmount, SponsorName) %>%
+  xtable(caption
+       = "Porównanie łącznych przychodów od sponsorów", label = "tab:7")
+@
+
+<<include=FALSE>>=
+teams_A <- teams %>% inner_join(matches_played, by = c("TeamID" = "TeamA")) %>% mutate(GainedPoints = ScoreA)%>% rename("Oponent" = "TeamB")
+teams_B <- teams %>% inner_join(matches_played, by = c("TeamID" = "TeamB")) %>% mutate(GainedPoints = ScoreB)%>% rename("Oponent" = "TeamA")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+teams_A %>% rbind(teams_B) %>% group_by(TeamID) %>% 
+  summarize(mean(GainedPoints)) %>%
+  rename("AveragePoints" = "mean(GainedPoints)") %>%
+  arrange(desc(AveragePoints)) %>%
+  inner_join(teams, by = "TeamID") %>%
+  xtable(caption
+       = "Średnia liczba zdobytych punktów", label = "tab:9a")
+@
+
+<<echo=FALSE, results='asis', message=FALSE>>=
+teams_A %>% rbind(teams_B) %>% group_by(TeamID) %>% 
+  summarize(mean(GainedPoints)) %>%
+  rename("AveragePoints" = "mean(GainedPoints)") %>%
+  inner_join(teams, by = "TeamID") %>%
+  group_by(Type, AgeCategory) %>%
+  top_n(1, AveragePoints) %>%
+  xtable(caption
+       = "Najlepsze drużyny w każdej kategorii", label = "tab:9b")
+@
+
+\end{document}

@@ -675,7 +675,7 @@ def fill(cursor):
                     
                     amount = amount / 2 # poza sezonem
                     
-                other_costs.append((date, amount, None, None, None, None, other_cost_id))
+                other_costs.append((date, -amount, None, None, None, None, other_cost_id))
                 
                 date += time_change
                 

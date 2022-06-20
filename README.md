@@ -3,7 +3,11 @@
 Adres do strony z opisem projektu: http://prac.im.pwr.edu.pl/~giniew/doku.php?id=rok2122:letni:bd:projekt
 
 ## Dokumentacja Curling-Masters
-Joanna Matuszak, Joanna Wojciechowicz, Wiktoria Marzec, Tymoteusz Kempa, Krystian Walewski
+- [Joanna Matuszak](https://github.com/vsiv00)
+- Joanna Wojciechowicz
+- Wiktoria Marzec
+- [Tymoteusz Kempa](https://github.com/Tymo108)
+- [Krystian Walewski](https://github.com/kwalewski)
 
 ## Spis użytych technologii
 

@@ -43,12 +43,7 @@ Joanna Matuszak, Joanna Wojciechowicz, Wiktoria Marzec, Tymoteusz Kempa, Krystia
 
 ## Schemat projektu bazy danych
 
-\begin{figure}[!htb]
-\centering
-\includegraphics[width=15cm]{schemat.png}
-\caption{Schemat bazy danych}
-\label{fig:1}
-\end{figure}
+![Screenshot](screen/schema.png)
 
 ## Lista zależności funkcyjnych z wyjaśnieniem
 

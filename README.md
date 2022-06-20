@@ -38,6 +38,7 @@ Adres do strony z opisem projektu: http://prac.im.pwr.edu.pl/~giniew/doku.php?id
     - curlingmasters_create.sql - kod tworzacy bazę danych
 - report.Rnw - plik generujący raport z analizą danych
 - report.pdf - raport z analizą danych
+- screen - folder z potrzebnymi do dokumentacji obrazkami
 
 ## Kolejność i sposób uruchamiania plików, aby uzyskać gotowy projekt
 
